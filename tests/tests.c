@@ -23,5 +23,24 @@ TEST_CASE(basic_args) {
     return 0;
 }
 
+TEST_CASE(string_args) {
+    const char* input = NULL;
+    const char* output = NULL;
+    int verbose = 0;
+    ls_args args;
+    char* argv[] = { "./program", "--input", "file.txt", "-o", "output.txt", "-v", NULL };
+    int argc = sizeof(argv) / sizeof(*argv) - 1;
+
+    ls_args_init(&args);
+    ls_arg_string(&args, &input, "i", "input", "Input file path", 0);
+    ls_arg_string(&args, &output, "o", "output", "Output file path", 0);
+    ls_arg_bool(&args, &verbose, "v", "verbose", "Verbose output", 0);
+    ASSERT(ls_args_parse(&args, argc, argv));
+    ASSERT(strcmp(input, "file.txt") == 0);
+    ASSERT(strcmp(output, "output.txt") == 0);
+    ASSERT_EQ(verbose, 1, "%d");
+    ls_args_free(&args);
+    return 0;
+}
 
 TEST_MAIN
