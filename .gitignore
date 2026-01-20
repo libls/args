@@ -1,0 +1,5 @@
+tests/tests
+.cache/
+*.o
+compile_commands.json
+coverage/
