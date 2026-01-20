@@ -1,6 +1,6 @@
 /* Lion's Standard (LS) test harness.
  *
- * Version: 1.0
+ * Version: 1.1
  * Website: https://libls.org
  * Repo: https://github.com/libls/test
  * SPDX-License-Identifier: MIT
@@ -278,6 +278,7 @@ static int ls_test_main(int argc, char** argv) {
 end:
     fprintf(stderr, "%d succeeded, %d failed, %d total\n", lst_ok, lst_fail,
         lst_ok + lst_fail);
+    free(lst_funcs);
 
     if (lst_fail > 0) {
         return 1;
