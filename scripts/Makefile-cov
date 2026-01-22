@@ -1,0 +1,25 @@
+# Coverage makefile, DO NOT USE
+# This file is mostly AI generated.
+
+CFLAGS=-fprofile-arcs -ftest-coverage -DNDEBUG -I.
+
+all: tests_cov_tmp
+
+tests_cov_tmp: ls_args.o tests/tests.c tests/ls_test.h
+	$(CC) -o $@ ls_args.o tests/tests.c -Itests -ggdb $(CFLAGS)
+
+ls_args.o: ls_args.h
+	echo -e "#include <stddef.h>\nvoid* test_realloc(void*, size_t);" >.test.h
+	cat .test.h ls_args.h >.ls_args_test.c
+	$(CC) -c -x c -o $@ .ls_args_test.c -Wall -Wextra -Wpedantic -Werror -std=c89 -ggdb \
+					-Wno-error=pragma-once-outside-header \
+								-DLS_ARGS_IMPLEMENTATION \
+								-DLS_REALLOC=test_realloc \
+					-Wno-pragma-once-outside-header \
+								$(CFLAGS)
+
+.PHONY: clean
+
+clean:
+	rm -f tests_cov_tmp
+	rm -f ls_args.o
