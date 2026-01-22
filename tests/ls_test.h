@@ -1,6 +1,6 @@
 /* Lion's Standard (LS) test harness.
  *
- * Version: 1.1
+ * Version: 1.2
  * Website: https://libls.org
  * Repo: https://github.com/libls/test
  * SPDX-License-Identifier: MIT
@@ -96,6 +96,8 @@
                 _func += 6;                                                    \
             fprintf(stderr, "%s: FAILED: %s (%s:%d)\n", _func, #cond,          \
                 __FILE__, __LINE__);                                           \
+            ++lst_fail;                                                        \
+            return 1;                                                          \
         }                                                                      \
     } while (0)
 
@@ -115,7 +117,6 @@
             ++lst_fail;                                                        \
             return 1;                                                          \
         }                                                                      \
-        ++lst_ok;                                                              \
     } while (0)
 
 #define ASSERT_NEQ(a, b, fmt)                                                  \
@@ -132,7 +133,6 @@
             ++lst_fail;                                                        \
             return 1;                                                          \
         }                                                                      \
-        ++lst_ok;                                                              \
     } while (0)
 
 #define ASSERT_LT(a, b, fmt)                                                   \
@@ -149,7 +149,6 @@
             ++lst_fail;                                                        \
             return 1;                                                          \
         }                                                                      \
-        ++lst_ok;                                                              \
     } while (0)
 
 #define ASSERT_LE(a, b, fmt)                                                   \
@@ -166,7 +165,6 @@
             ++lst_fail;                                                        \
             return 1;                                                          \
         }                                                                      \
-        ++lst_ok;                                                              \
     } while (0)
 
 #define ASSERT_GT(a, b, fmt)                                                   \
@@ -183,7 +181,6 @@
             ++lst_fail;                                                        \
             return 1;                                                          \
         }                                                                      \
-        ++lst_ok;                                                              \
     } while (0)
 
 #define ASSERT_GE(a, b, fmt)                                                   \
@@ -200,7 +197,6 @@
             ++lst_fail;                                                        \
             return 1;                                                          \
         }                                                                      \
-        ++lst_ok;                                                              \
     } while (0)
 #define LS_CAT2(a, b) a##b
 #define LS_CAT(a, b) LS_CAT2(a, b)
@@ -217,7 +213,6 @@ extern lst_func* lst_funcs;
 extern int lst_n;
 extern int lst_cap;
 extern int lst_fail;
-extern int lst_ok;
 
 void lst_reg(lst_func f);
 
@@ -229,7 +224,6 @@ lst_func* lst_funcs;
 int lst_n;
 int lst_cap;
 int lst_fail = 0;
-int lst_ok = 0;
 
 void lst_reg(lst_func f) {
     if (lst_n == lst_cap) {
@@ -276,8 +270,8 @@ static int ls_test_main(int argc, char** argv) {
     }
 
 end:
-    fprintf(stderr, "%d succeeded, %d failed, %d total\n", lst_ok, lst_fail,
-        lst_ok + lst_fail);
+    fprintf(stderr, "%d succeeded, %d failed, %d total\n", lst_n - lst_fail,
+        lst_fail, lst_n);
     free(lst_funcs);
 
     if (lst_fail > 0) {

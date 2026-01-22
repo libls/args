@@ -3,3 +3,4 @@ tests/tests
 *.o
 compile_commands.json
 coverage/
+examples/basic_example

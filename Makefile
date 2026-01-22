@@ -1,18 +1,28 @@
 # CAUTION: This Makefile builds ONLY the tests.
 # To use this library, see ls_test.h or README.md.
 
+CFLAGS ?= -fsanitize=address,undefined
+CFLAGS += -I.
+
+all: tests/tests examples/basic_example
+
 tests/tests: ls_args.o tests/tests.c tests/ls_test.h
-	$(CC) -o $@ ls_args.o tests/tests.c -Itests -I. -ggdb
+	$(CC) -o $@ ls_args.o tests/tests.c -Itests -ggdb $(CFLAGS)
 
 # Usually you wouldn't do this, but for tests we want this compiled with the
 # most pedantic settings.
 # Dont use this.
 ls_args.o: ls_args.h
-	$(CC) -c -x c -o $@ $^ -Wall -Wextra -Wpedantic -Werror -std=c89 -ggdb \
+	echo -e "#include <stddef.h>\nvoid* test_realloc(void*, size_t);" >.test.h
+	cat .test.h ls_args.h >.ls_args_test.c
+	rm .test.h
+	$(CC) -c -x c -o $@ .ls_args_test.c -Wall -Wextra -Wpedantic -Werror -std=c89 -ggdb \
     	-Wno-error=pragma-once-outside-header \
-        -I. \
         -DLS_ARGS_IMPLEMENTATION \
-    	-Wno-pragma-once-outside-header
+        -DLS_REALLOC=test_realloc \
+    	-Wno-pragma-once-outside-header \
+        $(CFLAGS)
+	rm .ls_args_test.c
 
 .PHONY: clean
 
