@@ -87,8 +87,8 @@
 #endif
 
 typedef enum ls_args_mode {
-    LS_ARG_OPTIONAL = 0,
-    LS_ARG_REQUIRED = 1
+    LS_ARGS_OPTIONAL = 0,
+    LS_ARGS_REQUIRED = 1
 } ls_args_mode;
 
 typedef enum ls_args_type {
