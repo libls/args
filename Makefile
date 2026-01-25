@@ -13,7 +13,7 @@ tests/tests: ls_args.o tests/tests.c tests/ls_test.h
 # most pedantic settings.
 # Dont use this.
 ls_args.o: ls_args.h
-	echo -e "#include <stddef.h>\nvoid* test_realloc(void*, size_t);" >.test.h
+	echo -e "#include <stddef.h>\nvoid* test_realloc(void*, size_t);\n#line 1 \"ls_args.h\"" >.test.h
 	cat .test.h ls_args.h >.ls_args_test.c
 	rm .test.h
 	$(CC) -c -x c -o $@ .ls_args_test.c -Wall -Wextra -Wpedantic -Werror -std=c89 -ggdb \
