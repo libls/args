@@ -25,7 +25,8 @@
  * ==== 2. HOW TO USE ====
  *
  * ls_args, like all LS libraries, is a header-only library in a single file.
- * To use it in your codebase, simply copy and paste it into your source tree, in a place where includes are read from.
+ * To use it in your codebase, simply copy and paste it into your source tree,
+ * in a place where includes are read from.
  *
  * Then include and use it.
  *
