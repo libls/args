@@ -118,8 +118,8 @@ typedef struct ls_args {
 
     /* some bookkeeping -- these are used to free dynamically allocated memory
      * for help or errors cleanly on `ls_args_free`. */
-    void* allocated_error;
-    void* allocated_help;
+    void* _allocated_error;
+    void* _allocated_help;
 } ls_args;
 
 /* Zero-initializes the arguments, does not allocate */
@@ -350,11 +350,11 @@ static int _lsa_parse_long(
     }
     if (!found) {
         const size_t len = 32 + strlen(parsed->as.erroneous);
-        a->allocated_error = LS_REALLOC(a->allocated_error, len);
-        memset(a->allocated_error, 0, len);
-        sprintf(a->allocated_error, "Invalid argument '--%s'",
+        a->_allocated_error = LS_REALLOC(a->_allocated_error, len);
+        memset(a->_allocated_error, 0, len);
+        sprintf(a->_allocated_error, "Invalid argument '--%s'",
             parsed->as.erroneous);
-        a->last_error = a->allocated_error;
+        a->last_error = a->_allocated_error;
         return 0;
     }
     return 1;
@@ -369,13 +369,13 @@ static int _lsa_parse_short(
         size_t k;
         if (*prev_arg) {
             const size_t len = 128 + strlen((*prev_arg)->short_opt);
-            a->allocated_error = LS_REALLOC(a->allocated_error, len);
-            memset(a->allocated_error, 0, len);
-            sprintf(a->allocated_error,
+            a->_allocated_error = LS_REALLOC(a->_allocated_error, len);
+            memset(a->_allocated_error, 0, len);
+            sprintf(a->_allocated_error,
                 "Expected argument following '-%s', instead got another "
                 "argument '-%c'",
                 (*prev_arg)->short_opt, arg);
-            a->last_error = a->allocated_error;
+            a->last_error = a->_allocated_error;
             return 0;
         }
         for (k = 0; k < a->args_len; ++k) {
@@ -388,10 +388,10 @@ static int _lsa_parse_short(
         }
         if (!found) {
             const size_t len = 32;
-            a->allocated_error = LS_REALLOC(a->allocated_error, len);
-            memset(a->allocated_error, 0, len);
-            sprintf(a->allocated_error, "Invalid argument '-%c'", arg);
-            a->last_error = a->allocated_error;
+            a->_allocated_error = LS_REALLOC(a->_allocated_error, len);
+            memset(a->_allocated_error, 0, len);
+            sprintf(a->_allocated_error, "Invalid argument '-%c'", arg);
+            a->last_error = a->_allocated_error;
             return 0;
         }
     }
@@ -409,11 +409,11 @@ int ls_args_parse(ls_args* a, int argc, char** argv) {
             if (parsed.type != LS_ARGS_PARSED_POSITIONAL) {
                 /* argument for the previous param expected, but none given */
                 const size_t len = 64 + strlen(prev_arg->long_opt);
-                a->allocated_error = LS_REALLOC(a->allocated_error, len);
-                memset(a->allocated_error, 0, len);
-                sprintf(a->allocated_error,
+                a->_allocated_error = LS_REALLOC(a->_allocated_error, len);
+                memset(a->_allocated_error, 0, len);
+                sprintf(a->_allocated_error,
                     "Expected argument following '--%s'", prev_arg->long_opt);
-                a->last_error = a->allocated_error;
+                a->last_error = a->_allocated_error;
                 return 0;
             }
             if (prev_arg->type == LS_ARGS_TYPE_STRING) {
@@ -425,11 +425,11 @@ int ls_args_parse(ls_args* a, int argc, char** argv) {
         switch (parsed.type) {
         case LS_ARGS_PARSED_ERROR: {
             const size_t len = 32 + strlen(parsed.as.erroneous);
-            a->allocated_error = LS_REALLOC(a->allocated_error, len);
-            memset(a->allocated_error, 0, len);
-            sprintf(a->allocated_error, "Invalid argument '%s'",
+            a->_allocated_error = LS_REALLOC(a->_allocated_error, len);
+            memset(a->_allocated_error, 0, len);
+            sprintf(a->_allocated_error, "Invalid argument '%s'",
                 parsed.as.erroneous);
-            a->last_error = a->allocated_error;
+            a->last_error = a->_allocated_error;
             return 0;
         }
         case LS_ARGS_PARSED_LONG: {
@@ -455,11 +455,11 @@ int ls_args_parse(ls_args* a, int argc, char** argv) {
     if (prev_arg) {
         /* argument for the previous param expected, but none given */
         const size_t len = 64 + strlen(prev_arg->long_opt);
-        a->allocated_error = LS_REALLOC(a->allocated_error, len);
-        memset(a->allocated_error, 0, len);
-        sprintf(a->allocated_error, "Expected argument following '--%s'",
+        a->_allocated_error = LS_REALLOC(a->_allocated_error, len);
+        memset(a->_allocated_error, 0, len);
+        sprintf(a->_allocated_error, "Expected argument following '--%s'",
             prev_arg->long_opt);
-        a->last_error = a->allocated_error;
+        a->last_error = a->_allocated_error;
         return 0;
     }
     return 1;
@@ -479,11 +479,11 @@ void ls_args_free(ls_args* a) {
         a->args_cap = 0;
         a->args_len = 0;
 
-        LS_FREE(a->allocated_error);
-        a->allocated_error = NULL;
+        LS_FREE(a->_allocated_error);
+        a->_allocated_error = NULL;
         a->last_error = "";
-        LS_FREE(a->allocated_help);
-        a->allocated_help = NULL;
+        LS_FREE(a->_allocated_help);
+        a->_allocated_help = NULL;
     }
 }
 #endif
