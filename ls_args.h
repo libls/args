@@ -1,3 +1,77 @@
+/* Lion's Standard (LS) ANSI C commandline argument parser.
+ *
+ * Version: 1.0
+ * Website: https://libls.org
+ * Repo: https://github.com/libls/args
+ * SPDX-License-Identifier: MIT
+ *
+ * ==== TABLE OF CONTENTS ====
+ *
+ * 1. DESCRIPTION
+ * 2. HOW TO USE
+ * 3. LICENSE
+ *
+ * ==== 1. DESCRIPTION ====
+ *
+ * A simpe, terse, but complete args parser.
+ *
+ * Supports the following syntaxes:
+ *
+ * - Short options: `-h`, `-f filename`, `-abc` (equivalent to `-a -b -c`)
+ * - Long options: `--help`, `--file filename`
+ * - Stop signals: `--` (everything after this is positional arguments)
+ * - Positional arguments: `input.txt output.txt`
+ *
+ * ==== 2. HOW TO USE ====
+ *
+ * ls_args, like all LS libraries, is a header-only library in a single file.
+ * To use it in your codebase, simply copy and paste it into your source tree, in a place where includes are read from.
+ *
+ * Then include and use it.
+ *
+ * Example:
+ *
+ * #include <ls_args.h>
+ * // ...
+ *     ls_args args;
+ *     int help = 0;
+ *     const char* outfile = "out.txt";
+ *
+ *     ls_args_init(&args);
+ *     ls_args_bool(&args, &help, "h", "help", "Prints help", 0);
+ *     ls_args_string(&args, &outfile, "o", "out", "Specify the outfile, default 'out.txt'", 0);
+ *     if (!ls_args_parse(&args, argc, argv)) {
+ *         printf("Error: %s\n%s\n", args.last_error, ls_args_help(&args));
+ *     }
+ *     ls_args_free(&args);
+ *
+ * ==== 3. LICENSE ====
+ *
+ * This file is provided under the MIT license. For commercial support and
+ * maintenance, feel free to use the e-mail below to contact the author(s).
+ *
+ * The MIT License (MIT)
+ *
+ * Copyright (c) 2026 Lion Kortlepel <libls@kortlepel.com>
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+ */
 #pragma once
 
 #include <stddef.h>
