@@ -1,6 +1,6 @@
 /* Lion's Standard (LS) test harness.
  *
- * Version: 1.2
+ * Version: 1.3
  * Website: https://libls.org
  * Repo: https://github.com/libls/test
  * SPDX-License-Identifier: MIT
@@ -19,6 +19,8 @@
  * Compiles under ANSI C, the only special part is the extension __typeof__ if
  * you use asserts other than `ASSERT` (e.g. ASSERT_EQ), and the constructor
  * attribute __attribute__((destructor)) for automatic test registration.
+ *
+ * Supports string comparisons using ASSERT_STR_EQ and ASSERT_STR_NEQ.
  *
  * ==== 2. HOW TO USE ====
  *
@@ -113,6 +115,38 @@
                 _func += 6;                                                    \
             fprintf(stderr,                                                    \
                 "%s: FAILED: %s == %s (actual: " fmt " != " fmt ") (%s:%d)\n", \
+                _func, #a, #b, _a, _b, __FILE__, __LINE__);                    \
+            ++lst_fail;                                                        \
+            return 1;                                                          \
+        }                                                                      \
+    } while (0)
+
+#define ASSERT_STR_EQ(a, b)                                                    \
+    do {                                                                       \
+        __typeof__(a) _a = (a);                                                \
+        __typeof__(b) _b = (b);                                                \
+        if (strcmp(_a, _b) != 0) {                                             \
+            const char* _func = __func__;                                      \
+            if (strncmp(_func, "lst_t_", 6) == 0)                              \
+                _func += 6;                                                    \
+            fprintf(stderr,                                                    \
+                "%s: FAILED: %s == %s (actual: \"%s\" != \"%s\") (%s:%d)\n",   \
+                _func, #a, #b, _a, _b, __FILE__, __LINE__);                    \
+            ++lst_fail;                                                        \
+            return 1;                                                          \
+        }                                                                      \
+    } while (0)
+
+#define ASSERT_STR_NEQ(a, b)                                                    \
+    do {                                                                       \
+        __typeof__(a) _a = (a);                                                \
+        __typeof__(b) _b = (b);                                                \
+        if (strcmp(_a, _b) == 0) {                                             \
+            const char* _func = __func__;                                      \
+            if (strncmp(_func, "lst_t_", 6) == 0)                              \
+                _func += 6;                                                    \
+            fprintf(stderr,                                                    \
+                "%s: FAILED: %s != %s (actual: \"%s\" == \"%s\") (%s:%d)\n",   \
                 _func, #a, #b, _a, _b, __FILE__, __LINE__);                    \
             ++lst_fail;                                                        \
             return 1;                                                          \

@@ -42,6 +42,29 @@ TEST_CASE(basic_args) {
     return 0;
 }
 
+TEST_CASE(basic_args_required) {
+    int help = 0;
+    int test = 0;
+    ls_args args;
+    char* argv[] = { "./hello", "-h", NULL };
+    int argc = sizeof(argv) / sizeof(*argv) - 1;
+
+    ls_args_init(&args);
+    ls_args_bool(&args, &help, "h", "help", "Provides help", 0);
+    ls_args_bool(&args, &test, "t", "test", "A test argument", LS_ARGS_REQUIRED);
+    ASSERT(!ls_args_parse(&args, argc, argv));
+    ASSERT_STR_EQ(args.last_error, "Required argument '--test' not found");
+
+    char* argv2[] = { "./hello", "-h", "-t", NULL };
+    int argc2 = sizeof(argv2) / sizeof(*argv2) - 1;
+    int ret = ls_args_parse(&args, argc2, argv2);
+    ASSERT_STR_EQ(args.last_error, "Success");
+
+    ls_args_free(&args);
+    return 0;
+}
+
+
 TEST_CASE(basic_args_only_short) {
     int help = 0;
     int test = 0;
@@ -120,7 +143,7 @@ TEST_CASE(error_invalid_argument) {
     ls_args_init(&args);
     ls_args_bool(&args, &help, "h", "help", "Provides help", 0);
     ASSERT(!ls_args_parse(&args, argc, argv));
-    ASSERT(strcmp(args.last_error, "Invalid argument '--test'") == 0);
+    ASSERT_STR_EQ(args.last_error, "Invalid argument '--test'");
     ls_args_free(&args);
     return 0;
 }
@@ -136,7 +159,7 @@ TEST_CASE(error_expected_argument) {
     ls_args_bool(&args, &help, "h", "help", "Provides help", 0);
     ls_args_string(&args, &file, "f", "file", "File to work on", 0);
     ASSERT(!ls_args_parse(&args, argc, argv));
-    ASSERT(strcmp(args.last_error, "Expected argument following '--file'") == 0);
+    ASSERT_STR_EQ(args.last_error, "Expected argument following '--file'");
     ls_args_free(&args);
     return 0;
 }
@@ -150,7 +173,7 @@ TEST_CASE(error_expected_argument_last_arg) {
     ls_args_init(&args);
     ls_args_string(&args, &file, "f", "file", "File to work on", 0);
     ASSERT(!ls_args_parse(&args, argc, argv));
-    ASSERT(strcmp(args.last_error, "Expected argument following '--file'") == 0);
+    ASSERT_STR_EQ(args.last_error, "Expected argument following '--file'");
     ls_args_free(&args);
     return 0;
 }
@@ -166,7 +189,7 @@ TEST_CASE(error_expected_argument_short_combined) {
     ls_args_bool(&args, &help, "h", "help", "Provides help", 0);
     ls_args_string(&args, &file, "f", "file", "File to work on", 0);
     ASSERT(!ls_args_parse(&args, argc, argv));
-    ASSERT(strcmp(args.last_error, "Expected argument following '-f', instead got another argument '-h'") == 0);
+    ASSERT_STR_EQ(args.last_error, "Expected argument following '-f', instead got another argument '-h'");
     ls_args_free(&args);
     return 0;
 }
@@ -179,7 +202,7 @@ TEST_CASE(error_parse_fail) {
 
     ls_args_init(&args);
     ASSERT(!ls_args_parse(&args, argc, argv));
-    ASSERT(strcmp(args.last_error, "Invalid argument '-'") == 0);
+    ASSERT_STR_EQ(args.last_error, "Invalid argument '-'");
     ls_args_free(&args);
     return 0;
 }
@@ -245,7 +268,7 @@ TEST_CASE(alloc_fail) {
     ret = ls_args_bool(&args, &help, "h", "help", "Provides help", 0);
     fail_alloc = 0;
     ASSERT(!ret);
-    ASSERT(strcmp(args.last_error, "Allocation failure") == 0);
+    ASSERT_STR_EQ(args.last_error, "Allocation failure");
     /* there is no documented error state for this; we simply fail to add the
      * argument? */
     ASSERT_EQ(args.args_len, 0, "%uz");
@@ -261,7 +284,7 @@ TEST_CASE(error_parse_fail_empty) {
 
     ls_args_init(&args);
     ASSERT(!ls_args_parse(&args, argc, argv));
-    ASSERT(strcmp(args.last_error, "Invalid argument ''") == 0);
+    ASSERT_STR_EQ(args.last_error, "Invalid argument ''");
     ls_args_free(&args);
     return 0;
 }
@@ -287,7 +310,7 @@ TEST_CASE(error_invalid_argument_short) {
     ls_args_init(&args);
     ls_args_bool(&args, &help, "h", "help", "Provides help", 0);
     ASSERT(!ls_args_parse(&args, argc, argv));
-    ASSERT(strcmp(args.last_error, "Invalid argument '-t'") == 0);
+    ASSERT_STR_EQ(args.last_error, "Invalid argument '-t'");
     ls_args_free(&args);
     return 0;
 }
@@ -306,8 +329,8 @@ TEST_CASE(string_args) {
     ls_args_string(&args, &output, "o", "output", "Output file path", 0);
     ls_args_bool(&args, &verbose, "v", "verbose", "Verbose output", 0);
     ASSERT(ls_args_parse(&args, argc, argv));
-    ASSERT(strcmp(input, "file.txt") == 0);
-    ASSERT(strcmp(output, "output.txt") == 0);
+    ASSERT_STR_EQ(input, "file.txt");
+    ASSERT_STR_EQ(output, "output.txt");
     ASSERT_EQ(verbose, 1, "%d");
     ls_args_free(&args);
     return 0;

@@ -103,6 +103,7 @@ typedef struct ls_args_arg {
     ls_args_type type;
     void* val_ptr;
     ls_args_mode mode;
+    int found;
 } ls_args_arg;
 
 typedef struct ls_args {
@@ -325,6 +326,7 @@ end:
 }
 
 void _lsa_apply(ls_args_arg* arg, ls_args_arg** prev_arg) {
+    arg->found = 1;
     switch (arg->type) {
     case LS_ARGS_TYPE_BOOL:
         *(int*)arg->val_ptr = 1;
@@ -403,6 +405,11 @@ int ls_args_parse(ls_args* a, int argc, char** argv) {
     ls_args_arg* prev_arg = NULL;
     assert(a != NULL);
     assert(argv != NULL);
+    a->last_error = "Success";
+    /* set all args to not found in case this is called multiple times */
+    for (i = 0; i < (int)a->args_len; ++i) {
+        a->args[i].found = 0;
+    }
     for (i = 1; i < argc; ++i) {
         _lsa_parsed parsed = _lsa_parse(argv[i]);
         if (prev_arg) {
@@ -462,6 +469,19 @@ int ls_args_parse(ls_args* a, int argc, char** argv) {
         a->last_error = a->_allocated_error;
         return 0;
     }
+
+    for (i = 0; i < (int)a->args_len; ++i) {
+        if (a->args[i].mode == LS_ARGS_REQUIRED && !a->args[i].found) {
+            const size_t len = 64 + strlen(a->args[i].long_opt);
+            a->_allocated_error = LS_REALLOC(a->_allocated_error, len);
+            memset(a->_allocated_error, 0, len);
+            sprintf(a->_allocated_error, "Required argument '--%s' not found",
+                a->args[i].long_opt);
+            a->last_error = a->_allocated_error;
+            return 0;
+        }
+    }
+
     return 1;
 }
 
