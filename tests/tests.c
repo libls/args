@@ -1,5 +1,5 @@
-#include <stdint.h>
 #include <limits.h>
+#include <stdint.h>
 #define LS_TEST_IMPLEMENTATION
 #include "ls_test.h"
 
@@ -51,7 +51,8 @@ TEST_CASE(basic_args_required) {
 
     ls_args_init(&args);
     ls_args_bool(&args, &help, "h", "help", "Provides help", 0);
-    ls_args_bool(&args, &test, "t", "test", "A test argument", LS_ARGS_REQUIRED);
+    ls_args_bool(
+        &args, &test, "t", "test", "A test argument", LS_ARGS_REQUIRED);
     ASSERT(!ls_args_parse(&args, argc, argv));
     ASSERT_STR_EQ(args.last_error, "Required argument '--test' not found");
 
@@ -64,6 +65,71 @@ TEST_CASE(basic_args_required) {
     return 0;
 }
 
+TEST_CASE(basic_args_positional) {
+    int help = 0;
+    int test = 0;
+    int no = 0;
+    const char* input;
+    const char* output;
+    ls_args args;
+    char* argv[] = { "./hello", "-h", "hi", "--test", "world", NULL };
+    int argc = sizeof(argv) / sizeof(*argv) - 1;
+
+    ls_args_init(&args);
+    ls_args_bool(&args, &help, "h", "help", "Provides help", 0);
+    ls_args_pos_string(&args, 0, &input, "Input file", 0);
+    ls_args_bool(&args, &test, "t", "test", "A test argument", 0);
+    ls_args_bool(&args, &no, "n", "nope", "An argument that isn't present", 0);
+
+    ls_args_pos_string(&args, 1, &output, "Output file", 0);
+
+    if (!ls_args_parse(&args, argc, argv)) {
+        printf("Error: %s\n", args.last_error);
+        ASSERT(!"ls_args_parse failed");
+    }
+    ASSERT_EQ(help, 1, "%d");
+    ASSERT_EQ(test, 1, "%d");
+    ASSERT_EQ(no, 0, "%d");
+    ASSERT_STR_EQ(input, "hi");
+    ASSERT_STR_EQ(output, "world");
+    ls_args_free(&args);
+    return 0;
+}
+
+TEST_CASE(too_many_positional_after_double_dash) {
+    const char* first = NULL;
+    const char* second = NULL;
+    ls_args args;
+    char* argv[] = { "./hello", "--", "one", "two", "three", NULL };
+    int argc = sizeof(argv) / sizeof(*argv) - 1;
+
+    ls_args_init(&args);
+    ls_args_pos_string(&args, 0, &first, "First positional argument", 0);
+    ls_args_pos_string(&args, 1, &second, "Second positional argument", 0);
+
+    ASSERT(!ls_args_parse(&args, argc, argv));
+    ASSERT_STR_EQ(args.last_error, "Unexpected argument 'three'");
+    ls_args_free(&args);
+    return 0;
+}
+
+TEST_CASE(basic_args_positional_only_error) {
+    int help = 0;
+    const char* input;
+    const char* output;
+    ls_args args;
+    char* argv[] = { "./hello", "world", NULL };
+    int argc = sizeof(argv) / sizeof(*argv) - 1;
+
+    ls_args_init(&args);
+    ls_args_bool(&args, &help, "h", "help", "Provides help", 0);
+
+    ASSERT(!ls_args_parse(&args, argc, argv));
+
+    ASSERT_STR_EQ(args.last_error, "Unexpected argument 'world'");
+    ls_args_free(&args);
+    return 0;
+}
 
 TEST_CASE(basic_args_only_short) {
     int help = 0;
@@ -189,7 +255,8 @@ TEST_CASE(error_expected_argument_short_combined) {
     ls_args_bool(&args, &help, "h", "help", "Provides help", 0);
     ls_args_string(&args, &file, "f", "file", "File to work on", 0);
     ASSERT(!ls_args_parse(&args, argc, argv));
-    ASSERT_STR_EQ(args.last_error, "Expected argument following '-f', instead got another argument '-h'");
+    ASSERT_STR_EQ(args.last_error,
+        "Expected argument following '-f', instead got another argument '-h'");
     ls_args_free(&args);
     return 0;
 }
@@ -241,7 +308,8 @@ TEST_CASE(strip_dashes) {
     /* you can mix them */
     ls_args_bool(&args, &test, "t", "--test", "A test argument", 0);
     /* have as many as you want */
-    ls_args_bool(&args, &no, "-n", "----nope", "An argument that isn't present", 0);
+    ls_args_bool(
+        &args, &no, "-n", "----nope", "An argument that isn't present", 0);
     if (!ls_args_parse(&args, argc, argv)) {
         printf("Error: %s\n", args.last_error);
         ASSERT(!"ls_args_parse failed");
@@ -276,6 +344,27 @@ TEST_CASE(alloc_fail) {
     return 0;
 }
 
+TEST_CASE(alloc_fail_pos_string) {
+    const char* input = NULL;
+    ls_args args;
+    char* argv[] = { "./hello", "file.txt", NULL };
+    int argc = sizeof(argv) / sizeof(*argv) - 1;
+    int ret;
+
+    ls_args_init(&args);
+    ASSERT_EQ(args.args_len, 0, "%uz");
+    /* deliberately fail the allocation here */
+    fail_alloc = 1;
+    /* if the allocation fails, this fails */
+    ret = ls_args_pos_string(&args, 0, &input, "Input file", 0);
+    fail_alloc = 0;
+    ASSERT(!ret);
+    ASSERT_STR_EQ(args.last_error, "Allocation failure");
+    ASSERT_EQ(args.args_len, 0, "%uz");
+    ls_args_free(&args);
+    return 0;
+}
+
 TEST_CASE(error_parse_fail_empty) {
     int help = 0;
     ls_args args;
@@ -297,6 +386,25 @@ TEST_CASE(error_parse_ignore_double_dash) {
 
     ls_args_init(&args);
     ASSERT(ls_args_parse(&args, argc, argv));
+    ls_args_free(&args);
+    return 0;
+}
+
+TEST_CASE(parse_stop) {
+    const char *first, *second;
+    ls_args args;
+    int help = 0;
+    char* argv[] = { "./hello", "--help", "--", "-h", "--test", NULL };
+    int argc = sizeof(argv) / sizeof(*argv) - 1;
+
+    ls_args_init(&args);
+    ls_args_pos_string(&args, 0, &first, "First positional argument", 0);
+    ls_args_pos_string(&args, 1, &second, "First positional argument", 0);
+    ls_args_bool(&args, &help, "h", "help", "Provides help", 0);
+    ASSERT(ls_args_parse(&args, argc, argv));
+    ASSERT_STR_EQ(first, "-h");
+    ASSERT_STR_EQ(second, "--test");
+    ASSERT_EQ(help, 1, "%d");
     ls_args_free(&args);
     return 0;
 }

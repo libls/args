@@ -40,9 +40,11 @@
  *
  *     ls_args_init(&args);
  *     ls_args_bool(&args, &help, "h", "help", "Prints help", 0);
- *     ls_args_string(&args, &outfile, "o", "out", "Specify the outfile, default 'out.txt'", 0);
+ *     ls_args_string(&args, &outfile, "o", "out",
+ *                    "Specify the outfile, default 'out.txt'", 0);
  *     if (!ls_args_parse(&args, argc, argv)) {
- *         printf("Error: %s\n%s\n", args.last_error, ls_args_help(&args));
+ *         printf("Error: %s\n%s\n", args.last_error,
+ *                ls_args_help(&args));
  *     }
  *     ls_args_free(&args);
  *
@@ -97,8 +99,14 @@ typedef enum ls_args_type {
 } ls_args_type;
 
 typedef struct ls_args_arg {
-    const char* short_opt;
-    const char* long_opt;
+    int is_pos;
+    union {
+        struct _lsa_spec {
+            const char* short_opt;
+            const char* long_opt;
+        } name;
+        unsigned pos;
+    } match;
     const char* help;
     ls_args_type type;
     void* val_ptr;
@@ -159,6 +167,33 @@ int ls_args_bool(ls_args*, int* val, const char* short_opt,
  * failure. */
 int ls_args_string(ls_args*, const char** val, const char* short_opt,
     const char* long_opt, const char* help, ls_args_mode mode);
+/* A positional argument, specifically the `n`th argument which doesn't start
+ * with `-`, or the `n`th argument after a `--` stop indicator. Since that
+ * sounds a bit convoluted, here some concrete examples:
+ *
+ * Example 1:
+ *
+ * ./hello -r hello1 -v -x hello2 --other-flag
+ *            ^^^^^^       ^^^^^^
+ *             n=0          n=1
+ *
+ * assuming that -r is a boolean flag (takes no arguments).
+ *
+ * Example 2:
+ *
+ * ./my-app --flag1 --flag2 --  --help.txt
+ *                          ^^  ^^^^^^^^^^
+ *                          |    n=0
+ *                          |
+ *                          "stop" indicator
+ * everything after the `--` is a positional argument, for example a filename
+ * which starts with a dash (like in this example).
+ *
+ * This also means that providing n=1 or n=2 etc. without providing n=0 is not
+ * allowed.
+ */
+int ls_args_pos_string(ls_args*, unsigned n, const char** val, const char* help,
+    ls_args_mode mode);
 
 /* Does all the heavy lifting. Assumes that `argv` has `argc` elements. NULL
  * termination of the `argv` array doesn't matter, but null-termination of each
@@ -246,8 +281,9 @@ int _lsa_register(ls_args* a, void* val, ls_args_type type,
      * be a misuse of the API. */
     /* the rest may be NULL */
     arg->type = type;
-    arg->short_opt = short_opt;
-    arg->long_opt = long_opt;
+    arg->match.name.short_opt = short_opt;
+    arg->match.name.long_opt = long_opt;
+    arg->is_pos = 0;
     arg->help = help;
     arg->mode = mode;
     arg->val_ptr = val;
@@ -264,6 +300,29 @@ int ls_args_string(ls_args* a, const char** val, const char* short_opt,
     const char* long_opt, const char* help, ls_args_mode mode) {
     return _lsa_register(
         a, val, LS_ARGS_TYPE_STRING, short_opt, long_opt, help, mode);
+}
+
+int ls_args_pos_string(ls_args* a, unsigned n, const char** val,
+    const char* help, ls_args_mode mode) {
+    ls_args_arg* arg;
+    int ret;
+    assert(a != NULL);
+    assert(val != NULL);
+    ret = _lsa_add(a, &arg);
+    if (ret == 0) {
+        a->last_error = "Allocation failure";
+        return 0;
+    }
+    /* TODO: sanity check that there are no dashes in there, because that would
+     * be a misuse of the API. */
+    /* the rest may be NULL */
+    arg->type = LS_ARGS_TYPE_STRING;
+    arg->match.pos = n;
+    arg->help = help;
+    arg->mode = mode;
+    arg->val_ptr = val;
+    arg->is_pos = 1;
+    return 1;
 }
 
 typedef enum _lsa_parsed_type {
@@ -343,8 +402,12 @@ static int _lsa_parse_long(
     int found = 0;
     size_t k;
     for (k = 0; k < a->args_len; ++k) {
-        if (a->args[k].long_opt != NULL
-            && strcmp(parsed->as.long_arg, a->args[k].long_opt) == 0) {
+        if (a->args[k].is_pos) {
+            continue;
+        }
+        if (a->args[k].match.name.long_opt != NULL
+            && strcmp(parsed->as.long_arg, a->args[k].match.name.long_opt)
+                == 0) {
             _lsa_apply(&a->args[k], prev_arg);
             found = 1;
             break;
@@ -370,18 +433,23 @@ static int _lsa_parse_short(
         int found = 0;
         size_t k;
         if (*prev_arg) {
-            const size_t len = 128 + strlen((*prev_arg)->short_opt);
+            struct _lsa_spec named = (*prev_arg)->match.name;
+            const size_t len = 128 + strlen(named.short_opt);
             a->_allocated_error = LS_REALLOC(a->_allocated_error, len);
             memset(a->_allocated_error, 0, len);
             sprintf(a->_allocated_error,
                 "Expected argument following '-%s', instead got another "
                 "argument '-%c'",
-                (*prev_arg)->short_opt, arg);
+                named.short_opt, arg);
             a->last_error = a->_allocated_error;
             return 0;
         }
         for (k = 0; k < a->args_len; ++k) {
-            const char* opt = a->args[k].short_opt;
+            const char* opt;
+            if (a->args[k].is_pos) {
+                continue;
+            }
+            opt = a->args[k].match.name.short_opt;
             if (opt != NULL && opt[0] == arg) {
                 _lsa_apply(&a->args[k], prev_arg);
                 found = 1;
@@ -400,8 +468,28 @@ static int _lsa_parse_short(
     return 1;
 }
 
+static int _lsa_parse_positional(
+    ls_args* a, _lsa_parsed* parsed, unsigned pos) {
+    const size_t len = 32;
+    size_t i;
+    for (i = 0; i < a->args_len; ++i) {
+        ls_args_arg* arg = &a->args[i];
+        if (arg->is_pos && arg->match.pos == pos) {
+            *(const char**)arg->val_ptr = parsed->as.positional;
+            return 1;
+        }
+    }
+    a->_allocated_error = LS_REALLOC(a->_allocated_error, len);
+    memset(a->_allocated_error, 0, len);
+    sprintf(
+        a->_allocated_error, "Unexpected argument '%s'", parsed->as.positional);
+    a->last_error = a->_allocated_error;
+    return 0;
+}
+
 int ls_args_parse(ls_args* a, int argc, char** argv) {
     int i;
+    unsigned pos_i = 0;
     ls_args_arg* prev_arg = NULL;
     assert(a != NULL);
     assert(argv != NULL);
@@ -415,11 +503,12 @@ int ls_args_parse(ls_args* a, int argc, char** argv) {
         if (prev_arg) {
             if (parsed.type != LS_ARGS_PARSED_POSITIONAL) {
                 /* argument for the previous param expected, but none given */
-                const size_t len = 64 + strlen(prev_arg->long_opt);
+                const size_t len = 64 + strlen(prev_arg->match.name.long_opt);
                 a->_allocated_error = LS_REALLOC(a->_allocated_error, len);
                 memset(a->_allocated_error, 0, len);
                 sprintf(a->_allocated_error,
-                    "Expected argument following '--%s'", prev_arg->long_opt);
+                    "Expected argument following '--%s'",
+                    prev_arg->match.name.long_opt);
                 a->last_error = a->_allocated_error;
                 return 0;
             }
@@ -451,32 +540,47 @@ int ls_args_parse(ls_args* a, int argc, char** argv) {
             }
             break;
         }
-        case LS_ARGS_PARSED_STOP:
-            /* TODO */
+        case LS_ARGS_PARSED_STOP: {
+            i += 1;
+            for (; i < argc; ++i) {
+                _lsa_parsed parsed;
+                parsed.type = LS_ARGS_PARSED_POSITIONAL;
+                parsed.as.positional = argv[i];
+                if (!_lsa_parse_positional(a, &parsed, pos_i)) {
+                    return 0;
+                }
+                pos_i += 1;
+            }
+            /* that's all, no more parsing allowed */
+            i = argc;
             break;
+        }
         case LS_ARGS_PARSED_POSITIONAL:
-            assert(!"UNREACHABLE");
+            if (!_lsa_parse_positional(a, &parsed, pos_i)) {
+                return 0;
+            }
+            ++pos_i;
             break;
         }
     }
     if (prev_arg) {
         /* argument for the previous param expected, but none given */
-        const size_t len = 64 + strlen(prev_arg->long_opt);
+        const size_t len = 64 + strlen(prev_arg->match.name.long_opt);
         a->_allocated_error = LS_REALLOC(a->_allocated_error, len);
         memset(a->_allocated_error, 0, len);
         sprintf(a->_allocated_error, "Expected argument following '--%s'",
-            prev_arg->long_opt);
+            prev_arg->match.name.long_opt);
         a->last_error = a->_allocated_error;
         return 0;
     }
 
     for (i = 0; i < (int)a->args_len; ++i) {
         if (a->args[i].mode == LS_ARGS_REQUIRED && !a->args[i].found) {
-            const size_t len = 64 + strlen(a->args[i].long_opt);
+            const size_t len = 64 + strlen(a->args[i].match.name.long_opt);
             a->_allocated_error = LS_REALLOC(a->_allocated_error, len);
             memset(a->_allocated_error, 0, len);
             sprintf(a->_allocated_error, "Required argument '--%s' not found",
-                a->args[i].long_opt);
+                a->args[i].match.name.long_opt);
             a->last_error = a->_allocated_error;
             return 0;
         }
