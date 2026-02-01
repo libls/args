@@ -1,7 +1,7 @@
 /* Lion's Standard (LS) ANSI C commandline argument parser with included help
  * renderer.
  *
- * Version: 2.1
+ * Version: 2.2
  * Website: https://libls.org
  * Repo: https://github.com/libls/args
  * SPDX-License-Identifier: MIT
@@ -135,6 +135,9 @@ typedef struct ls_args {
     /* program name -- this is set on ls_args_parse, but you can change it here
      * if you want to, for whatever reason. */
     const char* program_name;
+
+    /* description rendered under the "usage" line in ls_args_help */
+    const char* help_description;
 
     /* some bookkeeping -- these are used to free dynamically allocated memory
      * for help or errors cleanly on `ls_args_free`. */
@@ -697,6 +700,32 @@ char* ls_args_help(ls_args* a) {
                 if (!_lsa_buffer_append_cstr(&help, a->args[i].help))
                     goto alloc_fail;
                 if (!_lsa_buffer_append_cstr(&help, close))
+                    goto alloc_fail;
+            }
+        }
+        if (a->help_description) {
+            if (!_lsa_buffer_append_cstr(&help, "\n\n"))
+                goto alloc_fail;
+            if (!_lsa_buffer_append_cstr(&help, a->help_description))
+                goto alloc_fail;
+        }
+        if (!_lsa_buffer_append_cstr(&help, "\n\nOptions:"))
+            goto alloc_fail;
+        for (i = 0; i < a->args_len; ++i) {
+            if (!a->args[i].is_pos) {
+                if (!_lsa_buffer_append_cstr(&help, "\n  -"))
+                    goto alloc_fail;
+                if (!_lsa_buffer_append_cstr(
+                        &help, a->args[i].match.name.short_opt))
+                    goto alloc_fail;
+                if (!_lsa_buffer_append_cstr(&help, " \t--"))
+                    goto alloc_fail;
+                if (!_lsa_buffer_append_cstr(
+                        &help, a->args[i].match.name.long_opt))
+                    goto alloc_fail;
+                if (!_lsa_buffer_append_cstr(&help, " \t\t"))
+                    goto alloc_fail;
+                if (!_lsa_buffer_append_cstr(&help, a->args[i].help))
                     goto alloc_fail;
             }
         }
