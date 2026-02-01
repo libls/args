@@ -125,10 +125,16 @@ typedef struct ls_args {
     size_t args_len;
     size_t args_cap;
 
+    /* program name -- this is set on ls_args_parse, but you can change it here
+     * if you want to, for whatever reason. */
+    const char* program_name;
+
     /* some bookkeeping -- these are used to free dynamically allocated memory
      * for help or errors cleanly on `ls_args_free`. */
     void* _allocated_error;
     void* _allocated_help;
+
+    size_t _next_pos;
 } ls_args;
 
 /* Zero-initializes the arguments, does not allocate */
@@ -167,11 +173,7 @@ int ls_args_bool(ls_args*, int* val, const char* short_opt,
  * failure. */
 int ls_args_string(ls_args*, const char** val, const char* short_opt,
     const char* long_opt, const char* help, ls_args_mode mode);
-/* A positional argument, specifically the `n`th argument which doesn't start
- * with `-`, or the `n`th argument after a `--` stop indicator. Since that
- * sounds a bit convoluted, here some concrete examples:
- *
- * Example 1:
+/* A positional argument
  *
  * ./hello -r hello1 -v -x hello2 --other-flag
  *            ^^^^^^       ^^^^^^
@@ -189,11 +191,11 @@ int ls_args_string(ls_args*, const char** val, const char* short_opt,
  * everything after the `--` is a positional argument, for example a filename
  * which starts with a dash (like in this example).
  *
- * This also means that providing n=1 or n=2 etc. without providing n=0 is not
- * allowed.
+ * The first call to this function declares the argument for n=0, the next for
+ * n=1, and so on.
  */
-int ls_args_pos_string(ls_args*, unsigned n, const char** val, const char* help,
-    ls_args_mode mode);
+int ls_args_pos_string(
+    ls_args*, const char** val, const char* name, ls_args_mode mode);
 
 /* Does all the heavy lifting. Assumes that `argv` has `argc` elements. NULL
  * termination of the `argv` array doesn't matter, but null-termination of each
@@ -203,12 +205,12 @@ int ls_args_pos_string(ls_args*, unsigned n, const char** val, const char* help,
  * On failure, the `args.last_error` is set to a human-readable string. */
 int ls_args_parse(ls_args* args, int argc, char** argv);
 
-/* Same as args.last_error. */
-char* ls_args_get_error(ls_args*);
 /* Constructs a help message from the arguments registered on the args struct
  * via `ls_args_{bool, string, ...} functions.
- * The string is statically allocated and only valid until `ls_args_help` is
- * called again. */
+ * The string is dynamically allocated using LS_REALLOC and is freed
+ * automatically once ls_args_free() is called. The string may be
+ * replaced/changed by the next invocation to this function, as the buffer is
+ * reused. */
 char* ls_args_help(ls_args*);
 
 /* Frees all memory allocated in the args. */
@@ -302,8 +304,11 @@ int ls_args_string(ls_args* a, const char** val, const char* short_opt,
         a, val, LS_ARGS_TYPE_STRING, short_opt, long_opt, help, mode);
 }
 
-int ls_args_pos_string(ls_args* a, unsigned n, const char** val,
-    const char* help, ls_args_mode mode) {
+int ls_args_pos_string(
+    ls_args* a, const char** val, const char* name, ls_args_mode mode) {
+    /* TODO: The semantics are unclear when the first arg is not required but
+     * the second is. Effectively, the first becomes required, too, because the
+     * second cannot be the second without the first. */
     ls_args_arg* arg;
     int ret;
     assert(a != NULL);
@@ -313,12 +318,9 @@ int ls_args_pos_string(ls_args* a, unsigned n, const char** val,
         a->last_error = "Allocation failure";
         return 0;
     }
-    /* TODO: sanity check that there are no dashes in there, because that would
-     * be a misuse of the API. */
-    /* the rest may be NULL */
     arg->type = LS_ARGS_TYPE_STRING;
-    arg->match.pos = n;
-    arg->help = help;
+    arg->match.pos = a->_next_pos++;
+    arg->help = name;
     arg->mode = mode;
     arg->val_ptr = val;
     arg->is_pos = 1;
@@ -352,7 +354,7 @@ static _lsa_parsed _lsa_parse(const char* s) {
     _lsa_parsed res;
     assert(s != NULL);
     /* empty string or `-` */
-    if (s_len < 2) {
+    if (s_len == 0 || (s_len == 1 && s[0] == '-')) {
         res.type = LS_ARGS_PARSED_ERROR;
         res.as.erroneous = s;
         goto end;
@@ -384,7 +386,7 @@ end:
     return res;
 }
 
-void _lsa_apply(ls_args_arg* arg, ls_args_arg** prev_arg) {
+static void _lsa_apply(ls_args_arg* arg, ls_args_arg** prev_arg) {
     arg->found = 1;
     switch (arg->type) {
     case LS_ARGS_TYPE_BOOL:
@@ -476,6 +478,7 @@ static int _lsa_parse_positional(
         ls_args_arg* arg = &a->args[i];
         if (arg->is_pos && arg->match.pos == pos) {
             *(const char**)arg->val_ptr = parsed->as.positional;
+            arg->found = 1;
             return 1;
         }
     }
@@ -494,6 +497,7 @@ int ls_args_parse(ls_args* a, int argc, char** argv) {
     assert(a != NULL);
     assert(argv != NULL);
     a->last_error = "Success";
+    a->program_name = argv[0];
     /* set all args to not found in case this is called multiple times */
     for (i = 0; i < (int)a->args_len; ++i) {
         a->args[i].found = 0;
@@ -564,8 +568,13 @@ int ls_args_parse(ls_args* a, int argc, char** argv) {
         }
     }
     if (prev_arg) {
+        size_t len;
         /* argument for the previous param expected, but none given */
-        const size_t len = 64 + strlen(prev_arg->match.name.long_opt);
+        /* this can not be a positional argument, because in order to become a
+         * prev_arg, it must have expected a value earlier. this is only the
+         * case with -/--... arguments */
+        assert(!prev_arg->is_pos);
+        len = 64 + strlen(prev_arg->match.name.long_opt);
         a->_allocated_error = LS_REALLOC(a->_allocated_error, len);
         memset(a->_allocated_error, 0, len);
         sprintf(a->_allocated_error, "Expected argument following '--%s'",
@@ -581,13 +590,14 @@ int ls_args_parse(ls_args* a, int argc, char** argv) {
                 len = 64;
                 a->_allocated_error = LS_REALLOC(a->_allocated_error, len);
                 memset(a->_allocated_error, 0, len);
-                sprintf(a->_allocated_error, "Required positional argument not found (argument %d)",
-                    a->args[i].match.pos);
+                sprintf(a->_allocated_error,
+                    "Required argument '%s' not provided", a->args[i].help);
             } else {
                 len = 64 + strlen(a->args[i].match.name.long_opt);
                 a->_allocated_error = LS_REALLOC(a->_allocated_error, len);
                 memset(a->_allocated_error, 0, len);
-                sprintf(a->_allocated_error, "Required argument '--%s' not found",
+                sprintf(a->_allocated_error,
+                    "Required argument '--%s' not found",
                     a->args[i].match.name.long_opt);
             }
 
@@ -599,12 +609,97 @@ int ls_args_parse(ls_args* a, int argc, char** argv) {
     return 1;
 }
 
-char* ls_args_help(ls_args* a) {
-    (void)a;
-    return "help!";
+typedef struct _lsa_buffer {
+    char* data;
+    size_t length;
+    size_t capacity;
+} _lsa_buffer;
+
+static int _lsa_buffer_reserve(_lsa_buffer* buffer, size_t required_capacity) {
+    char* new_data;
+
+    if (required_capacity <= buffer->capacity)
+        return 1;
+
+    new_data = (char*)LS_REALLOC(buffer->data, required_capacity);
+    if (!new_data)
+        return 0;
+
+    buffer->data = new_data;
+    buffer->capacity = required_capacity;
+    return 1;
 }
 
-char* ls_args_get_error(ls_args* a) { return a->last_error; }
+static int _lsa_buffer_append_bytes(
+    _lsa_buffer* buffer, const void* source, size_t byte_count) {
+    if (!_lsa_buffer_reserve(buffer, buffer->length + byte_count + 1)) {
+        return 0;
+    }
+
+    memcpy(buffer->data + buffer->length, source, byte_count);
+
+    buffer->length += byte_count;
+    buffer->data[buffer->length] = '\0';
+    return 1;
+}
+
+static int _lsa_buffer_append_cstr(_lsa_buffer* buffer, const char* string) {
+    return _lsa_buffer_append_bytes(buffer, string, strlen(string));
+}
+
+char* ls_args_help(ls_args* a) {
+    _lsa_buffer help;
+    if (a->_allocated_help != NULL) {
+        LS_FREE(a->_allocated_help);
+        a->_allocated_help = NULL;
+    }
+    help.data = NULL;
+    help.length = 0;
+    help.capacity = 0;
+
+    if (!_lsa_buffer_append_cstr(&help, "Usage: ")) {
+        goto alloc_fail;
+    }
+    if (a->program_name == NULL) {
+        a->program_name = "<program>";
+    }
+    if (!_lsa_buffer_append_cstr(&help, a->program_name)) {
+        goto alloc_fail;
+    }
+    if (a->args_len > 0) {
+        size_t i;
+        for (i = 0; i < a->args_len; ++i) {
+            if (!a->args[i].is_pos) {
+                if (!_lsa_buffer_append_cstr(&help, " [OPTION]")) {
+                    goto alloc_fail;
+                }
+                break;
+            }
+        }
+        for (i = 0; i < a->args_len; ++i) {
+            if (a->args[i].is_pos) {
+                const char* open
+                    = a->args[i].mode == LS_ARGS_REQUIRED ? " <" : " [";
+                const char* close
+                    = a->args[i].mode == LS_ARGS_REQUIRED ? ">" : "]";
+                if (!_lsa_buffer_append_cstr(&help, open))
+                    goto alloc_fail;
+                if (!_lsa_buffer_append_cstr(&help, a->args[i].help))
+                    goto alloc_fail;
+                if (!_lsa_buffer_append_cstr(&help, close))
+                    goto alloc_fail;
+            }
+        }
+    }
+
+    a->_allocated_help = help.data;
+    a->last_error = "Success";
+    return a->_allocated_help;
+alloc_fail:
+    a->_allocated_help = help.data;
+    a->last_error = "Allocation failure";
+    return "Not enough memory available to generate help text.";
+}
 
 void ls_args_free(ls_args* a) {
     if (a) {
