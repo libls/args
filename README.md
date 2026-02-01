@@ -60,3 +60,9 @@ See [`ls_args.h`](ls_args.h) for detailed documentation and usage patterns.
 ## License
 
 MIT.
+
+## Links
+
+- [Website](https://libls.org)
+- [GitHub](https://github.com/libls/args.git)
+- [LibLS Git](https://git.libls.org/args.git)

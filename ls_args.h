@@ -3,7 +3,8 @@
  *
  * Version: 2.4
  * Website: https://libls.org
- * Repo: https://github.com/libls/args
+ * GitHub: https://github.com/libls/args
+ * Mirror: https://git.libls.org/args.git
  * SPDX-License-Identifier: MIT
  *
  * ==== TABLE OF CONTENTS ====
