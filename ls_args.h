@@ -1,7 +1,7 @@
 /* Lion's Standard (LS) ANSI C commandline argument parser with included help
  * renderer.
  *
- * Version: 2.3
+ * Version: 2.4
  * Website: https://libls.org
  * Repo: https://github.com/libls/args
  * SPDX-License-Identifier: MIT
@@ -763,8 +763,20 @@ char* ls_args_help(ls_args* a) {
                         if (!_lsa_buffer_append_cstr(
                                 &help, a->args[i].match.name.long_opt))
                             goto alloc_fail;
-                        if (!_lsa_buffer_append_cstr(&help, " \t\t"))
-                            goto alloc_fail;
+                        if (a->args[i].type != LS_ARGS_TYPE_BOOL) {
+                            if (!_lsa_buffer_append_cstr(&help, " \t"))
+                                goto alloc_fail;
+                            if (a->args[i].mode == LS_ARGS_REQUIRED) {
+                                if (!_lsa_buffer_append_cstr(&help, "<VALUE> \t"))
+                                    goto alloc_fail;
+                            } else {
+                                if (!_lsa_buffer_append_cstr(&help, "[VALUE] \t"))
+                                    goto alloc_fail;
+                            }
+                        } else {
+                            if (!_lsa_buffer_append_cstr(&help, " \t\t\t"))
+                                goto alloc_fail;
+                        }
                         if (!_lsa_buffer_append_cstr(&help, a->args[i].help))
                             goto alloc_fail;
                     }
