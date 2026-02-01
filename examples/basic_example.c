@@ -6,7 +6,7 @@ int main(int argc, char** argv) {
     int help = 0;
     const char* outfile = "out.txt";
     const char* infile;
-    const char* testfile;
+    const char* testfile = NULL;
 
     ls_args_init(&args);
     args.help_description = "An example program to show how arguments work. "
@@ -29,7 +29,7 @@ int main(int argc, char** argv) {
 
     printf("Got input file: %s\n", infile);
     printf("Got output file: %s\n", outfile);
-    printf("Got test file: %s\n", testfile);
+    printf("Got test file: %s\n", testfile ? testfile : "(null)");
 
     ls_args_free(&args);
     return 0;
