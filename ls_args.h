@@ -41,18 +41,29 @@
  * // ...
  *     ls_args args;
  *     int help = 0;
- *     const char* infile;
  *     const char* outfile = "out.txt";
+ *     const char* infile;
+ *     const char* testfile;
  *
  *     ls_args_init(&args);
+ *     args.help_description = "Some description"; // optional
  *     ls_args_bool(&args, &help, "h", "help", "Prints help", 0);
  *     ls_args_string(&args, &outfile, "o", "out",
- *                    "Specify the outfile, default 'out.txt'", 0);
- *     ls_args_pos_string(&args, &infile, "input file")
+ *         "Specify the outfile, default 'out.txt'", 0);
+ *     ls_args_pos_string(&args, &infile, "input file", LS_ARGS_REQUIRED);
+ *     ls_args_pos_string(&args, &testfile, "test file", 0);
  *     if (!ls_args_parse(&args, argc, argv)) {
- *         printf("Error: %s\n%s\n", args.last_error,
- *                ls_args_help(&args));
+ *         if (help) {
+ *             puts(ls_args_help(&args));
+ *         } else {
+ *             printf("Error: %s\n", args.last_error);
+ *         }
+ *         ls_args_free(&args);
+ *         return 1;
  *     }
+ *
+ *     // TODO: Do something here with your arguments!
+ *
  *     ls_args_free(&args);
  *
  * ==== 3. LICENSE ====
