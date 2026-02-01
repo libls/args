@@ -1,7 +1,7 @@
 /* Lion's Standard (LS) ANSI C commandline argument parser with included help
  * renderer.
  *
- * Version: 2.2
+ * Version: 2.3
  * Website: https://libls.org
  * Repo: https://github.com/libls/args
  * SPDX-License-Identifier: MIT
@@ -244,10 +244,35 @@ void ls_args_free(ls_args*);
  * separately with -DLS_ARGS_IMPLEMENTATION. */
 #ifdef LS_ARGS_IMPLEMENTATION
 
+#define _lsa_ALLOC_FAIL_STR "Allocation failure"
+
 #include <assert.h>
+#include <stdarg.h>
 #include <stdint.h>
 #include <stdio.h> /* for sprintf */
 #include <string.h>
+
+static int _lsa_set_error_va(
+    ls_args* a, size_t len, const char* fmt, va_list ap) {
+    a->_allocated_error = LS_REALLOC(a->_allocated_error, len);
+    if (a->_allocated_error == NULL) {
+        a->last_error = _lsa_ALLOC_FAIL_STR;
+        return 0;
+    }
+    memset(a->_allocated_error, 0, len);
+    vsprintf(a->_allocated_error, fmt, ap);
+    a->last_error = a->_allocated_error;
+    return 1;
+}
+
+static int _lsa_set_error(ls_args* a, size_t len, const char* fmt, ...) {
+    int ret;
+    va_list ap;
+    va_start(ap, fmt);
+    ret = _lsa_set_error_va(a, len, fmt, ap);
+    va_end(ap);
+    return ret;
+}
 
 /* 0 on failure, 1 on success */
 static int _lsa_add(ls_args* a, ls_args_arg** arg) {
@@ -300,7 +325,7 @@ int _lsa_register(ls_args* a, void* val, ls_args_type type,
     assert(short_opt == NULL || strlen(short_opt) == 1);
     ret = _lsa_add(a, &arg);
     if (ret == 0) {
-        a->last_error = "Allocation failure";
+        a->last_error = _lsa_ALLOC_FAIL_STR;
         return 0;
     }
     /* TODO: sanity check that there are no dashes in there, because that would
@@ -339,7 +364,7 @@ int ls_args_pos_string(
     assert(val != NULL);
     ret = _lsa_add(a, &arg);
     if (ret == 0) {
-        a->last_error = "Allocation failure";
+        a->last_error = _lsa_ALLOC_FAIL_STR;
         return 0;
     }
     arg->type = LS_ARGS_TYPE_STRING;
@@ -441,11 +466,10 @@ static int _lsa_parse_long(
     }
     if (!found) {
         const size_t len = 32 + strlen(parsed->as.erroneous);
-        a->_allocated_error = LS_REALLOC(a->_allocated_error, len);
-        memset(a->_allocated_error, 0, len);
-        sprintf(a->_allocated_error, "Invalid argument '--%s'",
-            parsed->as.erroneous);
-        a->last_error = a->_allocated_error;
+        if (!_lsa_set_error(
+                a, len, "Invalid argument '--%s'", parsed->as.erroneous)) {
+            return 0;
+        }
         return 0;
     }
     return 1;
@@ -461,13 +485,12 @@ static int _lsa_parse_short(
         if (*prev_arg) {
             struct _lsa_spec named = (*prev_arg)->match.name;
             const size_t len = 128 + strlen(named.short_opt);
-            a->_allocated_error = LS_REALLOC(a->_allocated_error, len);
-            memset(a->_allocated_error, 0, len);
-            sprintf(a->_allocated_error,
-                "Expected argument following '-%s', instead got another "
-                "argument '-%c'",
-                named.short_opt, arg);
-            a->last_error = a->_allocated_error;
+            if (!_lsa_set_error(a, len,
+                    "Expected argument following '-%s', instead got another "
+                    "argument '-%c'",
+                    named.short_opt, arg)) {
+                return 0;
+            }
             return 0;
         }
         for (k = 0; k < a->args_len; ++k) {
@@ -484,10 +507,9 @@ static int _lsa_parse_short(
         }
         if (!found) {
             const size_t len = 32;
-            a->_allocated_error = LS_REALLOC(a->_allocated_error, len);
-            memset(a->_allocated_error, 0, len);
-            sprintf(a->_allocated_error, "Invalid argument '-%c'", arg);
-            a->last_error = a->_allocated_error;
+            if (!_lsa_set_error(a, len, "Invalid argument '-%c'", arg)) {
+                return 0;
+            }
             return 0;
         }
     }
@@ -506,11 +528,10 @@ static int _lsa_parse_positional(
             return 1;
         }
     }
-    a->_allocated_error = LS_REALLOC(a->_allocated_error, len);
-    memset(a->_allocated_error, 0, len);
-    sprintf(
-        a->_allocated_error, "Unexpected argument '%s'", parsed->as.positional);
-    a->last_error = a->_allocated_error;
+    if (!_lsa_set_error(
+            a, len, "Unexpected argument '%s'", parsed->as.positional)) {
+        return 0;
+    }
     return 0;
 }
 
@@ -532,12 +553,11 @@ int ls_args_parse(ls_args* a, int argc, char** argv) {
             if (parsed.type != LS_ARGS_PARSED_POSITIONAL) {
                 /* argument for the previous param expected, but none given */
                 const size_t len = 64 + strlen(prev_arg->match.name.long_opt);
-                a->_allocated_error = LS_REALLOC(a->_allocated_error, len);
-                memset(a->_allocated_error, 0, len);
-                sprintf(a->_allocated_error,
-                    "Expected argument following '--%s'",
-                    prev_arg->match.name.long_opt);
-                a->last_error = a->_allocated_error;
+                if (!_lsa_set_error(a, len,
+                        "Expected argument following '--%s'",
+                        prev_arg->match.name.long_opt)) {
+                    return 0;
+                }
                 return 0;
             }
             if (prev_arg->type == LS_ARGS_TYPE_STRING) {
@@ -549,11 +569,10 @@ int ls_args_parse(ls_args* a, int argc, char** argv) {
         switch (parsed.type) {
         case LS_ARGS_PARSED_ERROR: {
             const size_t len = 32 + strlen(parsed.as.erroneous);
-            a->_allocated_error = LS_REALLOC(a->_allocated_error, len);
-            memset(a->_allocated_error, 0, len);
-            sprintf(a->_allocated_error, "Invalid argument '%s'",
-                parsed.as.erroneous);
-            a->last_error = a->_allocated_error;
+            if (!_lsa_set_error(
+                    a, len, "Invalid argument '%s'", parsed.as.erroneous)) {
+                return 0;
+            }
             return 0;
         }
         case LS_ARGS_PARSED_LONG: {
@@ -599,11 +618,10 @@ int ls_args_parse(ls_args* a, int argc, char** argv) {
          * case with -/--... arguments */
         assert(!prev_arg->is_pos);
         len = 64 + strlen(prev_arg->match.name.long_opt);
-        a->_allocated_error = LS_REALLOC(a->_allocated_error, len);
-        memset(a->_allocated_error, 0, len);
-        sprintf(a->_allocated_error, "Expected argument following '--%s'",
-            prev_arg->match.name.long_opt);
-        a->last_error = a->_allocated_error;
+        if (!_lsa_set_error(a, len, "Expected argument following '--%s'",
+                prev_arg->match.name.long_opt)) {
+            return 0;
+        }
         return 0;
     }
 
@@ -612,20 +630,19 @@ int ls_args_parse(ls_args* a, int argc, char** argv) {
             size_t len;
             if (a->args[i].is_pos) {
                 len = 64;
-                a->_allocated_error = LS_REALLOC(a->_allocated_error, len);
-                memset(a->_allocated_error, 0, len);
-                sprintf(a->_allocated_error,
-                    "Required argument '%s' not provided", a->args[i].help);
+                if (!_lsa_set_error(a, len,
+                        "Required argument '%s' not provided",
+                        a->args[i].help)) {
+                    return 0;
+                }
             } else {
                 len = 64 + strlen(a->args[i].match.name.long_opt);
-                a->_allocated_error = LS_REALLOC(a->_allocated_error, len);
-                memset(a->_allocated_error, 0, len);
-                sprintf(a->_allocated_error,
-                    "Required argument '--%s' not found",
-                    a->args[i].match.name.long_opt);
+                if (!_lsa_set_error(a, len,
+                        "Required argument '--%s' not found",
+                        a->args[i].match.name.long_opt)) {
+                    return 0;
+                }
             }
-
-            a->last_error = a->_allocated_error;
             return 0;
         }
     }
@@ -701,18 +718,19 @@ char* ls_args_help(ls_args* a) {
             }
         }
         for (i = 0; i < a->args_len; ++i) {
-            if (a->args[i].is_pos) {
-                const char* open
-                    = a->args[i].mode == LS_ARGS_REQUIRED ? " <" : " [";
-                const char* close
-                    = a->args[i].mode == LS_ARGS_REQUIRED ? ">" : "]";
-                if (!_lsa_buffer_append_cstr(&help, open))
-                    goto alloc_fail;
-                if (!_lsa_buffer_append_cstr(&help, a->args[i].help))
-                    goto alloc_fail;
-                if (!_lsa_buffer_append_cstr(&help, close))
-                    goto alloc_fail;
+            const char* open, *close;
+            if (!a->args[i].is_pos) {
+                continue;
             }
+
+            open = a->args[i].mode == LS_ARGS_REQUIRED ? " <" : " [";
+            close = a->args[i].mode == LS_ARGS_REQUIRED ? ">" : "]";
+            if (!_lsa_buffer_append_cstr(&help, open))
+                goto alloc_fail;
+            if (!_lsa_buffer_append_cstr(&help, a->args[i].help))
+                goto alloc_fail;
+            if (!_lsa_buffer_append_cstr(&help, close))
+                goto alloc_fail;
         }
         if (a->help_description) {
             if (!_lsa_buffer_append_cstr(&help, "\n\n"))
@@ -720,24 +738,37 @@ char* ls_args_help(ls_args* a) {
             if (!_lsa_buffer_append_cstr(&help, a->help_description))
                 goto alloc_fail;
         }
-        if (!_lsa_buffer_append_cstr(&help, "\n\nOptions:"))
-            goto alloc_fail;
-        for (i = 0; i < a->args_len; ++i) {
-            if (!a->args[i].is_pos) {
-                if (!_lsa_buffer_append_cstr(&help, "\n  -"))
+
+        /* Only print "Options:" if there are non-positional options */
+        {
+            int has_nonpositional = 0;
+            for (i = 0; i < a->args_len; ++i) {
+                if (!a->args[i].is_pos) {
+                    has_nonpositional = 1;
+                    break;
+                }
+            }
+            if (has_nonpositional) {
+                if (!_lsa_buffer_append_cstr(&help, "\n\nOptions:"))
                     goto alloc_fail;
-                if (!_lsa_buffer_append_cstr(
-                        &help, a->args[i].match.name.short_opt))
-                    goto alloc_fail;
-                if (!_lsa_buffer_append_cstr(&help, " \t--"))
-                    goto alloc_fail;
-                if (!_lsa_buffer_append_cstr(
-                        &help, a->args[i].match.name.long_opt))
-                    goto alloc_fail;
-                if (!_lsa_buffer_append_cstr(&help, " \t\t"))
-                    goto alloc_fail;
-                if (!_lsa_buffer_append_cstr(&help, a->args[i].help))
-                    goto alloc_fail;
+                for (i = 0; i < a->args_len; ++i) {
+                    if (!a->args[i].is_pos) {
+                        if (!_lsa_buffer_append_cstr(&help, "\n  -"))
+                            goto alloc_fail;
+                        if (!_lsa_buffer_append_cstr(
+                                &help, a->args[i].match.name.short_opt))
+                            goto alloc_fail;
+                        if (!_lsa_buffer_append_cstr(&help, " \t--"))
+                            goto alloc_fail;
+                        if (!_lsa_buffer_append_cstr(
+                                &help, a->args[i].match.name.long_opt))
+                            goto alloc_fail;
+                        if (!_lsa_buffer_append_cstr(&help, " \t\t"))
+                            goto alloc_fail;
+                        if (!_lsa_buffer_append_cstr(&help, a->args[i].help))
+                            goto alloc_fail;
+                    }
+                }
             }
         }
     }
@@ -747,7 +778,7 @@ char* ls_args_help(ls_args* a) {
     return a->_allocated_help;
 alloc_fail:
     a->_allocated_help = help.data;
-    a->last_error = "Allocation failure";
+    a->last_error = _lsa_ALLOC_FAIL_STR;
     return "Not enough memory available to generate help text.";
 }
 

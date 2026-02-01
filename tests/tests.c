@@ -3,10 +3,15 @@
 #define LS_TEST_IMPLEMENTATION
 #include "ls_test.h"
 
-int fail_alloc = 0;
+int fail_alloc_once = 0;
+int alloc_limit = -1;
 
 void* test_realloc(void* p, size_t size) {
-    if (fail_alloc) {
+    if (fail_alloc_once) {
+        fail_alloc_once = 0;
+        return NULL;
+    }
+    if (alloc_limit != -1 && (int)size > alloc_limit) {
         return NULL;
     }
     return realloc(p, size);
@@ -70,15 +75,246 @@ TEST_CASE(basic_args_with_unused_positionals) {
     return 0;
 }
 
+TEST_CASE(help_output_no_options) {
+    ls_args args;
+    const char* infile = NULL;
+    char* help_str;
+
+    ls_args_init(&args);
+    ls_args_pos_string(&args, &infile, "Input file", 0);
+
+    help_str = ls_args_help(&args);
+    ASSERT(help_str != NULL);
+    ASSERT_STR_EQ(args.last_error, "Success");
+
+    /* [OPTION] should NOT be present */
+    ASSERT(!strstr(help_str, "[OPTION]"));
+
+    /* "Options:" should NOT be present */
+    ASSERT(!strstr(help_str, "Options:"));
+
+    /* The positional argument should be present */
+    ASSERT(strstr(help_str, "[Input file]") || strstr(help_str, "<Input file>"));
+
+    ls_args_free(&args);
+    return 0;
+}
+
+TEST_CASE(huge_description) {
+    int help = 0;
+    ls_args args;
+    int i;
+    char* help_str;
+    /* Create a very large description string */
+    enum { DESC_SIZE = 8192 };
+    char* huge_desc = (char*)LS_REALLOC(NULL, DESC_SIZE + 1);
+    ASSERT(huge_desc != NULL);
+    for (i = 0; i < DESC_SIZE; ++i) {
+        huge_desc[i] = 'A' + (i % 26);
+    }
+    huge_desc[DESC_SIZE] = '\0';
+
+    ls_args_init(&args);
+    ls_args_bool(&args, &help, "h", "help", huge_desc, 0);
+
+    help_str = ls_args_help(&args);
+    ASSERT(help_str != NULL);
+    ASSERT_STR_EQ(args.last_error, "Success");
+    /* The huge description should appear in the help output */
+    ASSERT(strstr(help_str, huge_desc));
+
+    LS_FREE(huge_desc);
+    ls_args_free(&args);
+    return 0;
+}
+
+TEST_CASE(help_output_basic) {
+    int help = 0;
+    const char* infile = NULL;
+    const char* outfile = "out.txt";
+    ls_args args;
+    char* help_str;
+
+    ls_args_init(&args);
+    ls_args_bool(&args, &help, "h", "help", "Provides help", 0);
+    ls_args_string(&args, &outfile, "o", "out",
+        "Specify the outfile, default 'out.txt'", 0);
+    ls_args_pos_string(&args, &infile, "Input file", 0);
+
+    help_str = ls_args_help(&args);
+    ASSERT(help_str != NULL);
+    ASSERT_STR_EQ(args.last_error, "Success");
+
+    ASSERT(strstr(help_str, "-h"));
+    ASSERT(strstr(help_str, "--help"));
+    ASSERT(strstr(help_str, "-o"));
+    ASSERT(strstr(help_str, "--out"));
+
+    ASSERT(strstr(help_str, "Provides help"));
+    ASSERT(strstr(help_str, "Specify the outfile"));
+
+    ASSERT(strstr(help_str, "[OPTION]"));
+    ASSERT(strstr(help_str, "[Input file]"));
+
+    ASSERT(strstr(help_str, "default 'out.txt'"));
+
+    ASSERT(strstr(help_str, "Input file"));
+
+    ASSERT(strstr(help_str, "-h"));
+    ASSERT(strstr(help_str, "--help"));
+    ASSERT(strstr(help_str, "-o"));
+    ASSERT(strstr(help_str, "--out"));
+
+    ls_args_free(&args);
+    return 0;
+}
+
+TEST_CASE(help_output_basic_required_pos) {
+    int help = 0;
+    const char* infile = NULL;
+    const char* outfile = "out.txt";
+    ls_args args;
+    char* help_str;
+
+    ls_args_init(&args);
+    ls_args_bool(&args, &help, "h", "help", "Provides help", 0);
+    ls_args_string(&args, &outfile, "o", "out",
+        "Specify the outfile, default 'out.txt'", 0);
+    ls_args_pos_string(&args, &infile, "Input file", LS_ARGS_REQUIRED);
+
+    help_str = ls_args_help(&args);
+    ASSERT(help_str != NULL);
+    ASSERT_STR_EQ(args.last_error, "Success");
+
+    ASSERT(strstr(help_str, "-h"));
+    ASSERT(strstr(help_str, "--help"));
+    ASSERT(strstr(help_str, "-o"));
+    ASSERT(strstr(help_str, "--out"));
+
+    ASSERT(strstr(help_str, "Provides help"));
+    ASSERT(strstr(help_str, "Specify the outfile"));
+
+    ASSERT(strstr(help_str, "[OPTION]"));
+    ASSERT(strstr(help_str, "<Input file>"));
+
+    ASSERT(strstr(help_str, "default 'out.txt'"));
+
+    ASSERT(strstr(help_str, "Input file"));
+
+    ASSERT(strstr(help_str, "-h"));
+    ASSERT(strstr(help_str, "--help"));
+    ASSERT(strstr(help_str, "-o"));
+    ASSERT(strstr(help_str, "--out"));
+
+    ls_args_free(&args);
+    return 0;
+}
+
+TEST_CASE(help_alloc_limit_sweep) {
+    int help = 0;
+    int limit;
+    const char* infile = NULL;
+    const char* outfile = "out.txt";
+    ls_args args;
+    char* help_str = NULL;
+    int succeeded = 0;
+
+    ls_args_init(&args);
+    args.help_description = "My description!";
+    ls_args_bool(&args, &help, "h", "help", "Provides help", 0);
+    ls_args_string(&args, &outfile, "o", "out",
+        "Specify the outfile, default 'out.txt'", 0);
+    ls_args_pos_string(&args, &infile, "Input file", 0);
+
+    /* Sweep alloc_limit from very small sizes upward to ensure all
+     * allocation attempts inside ls_args_help are exercised.
+     * For each limit, call ls_args_help multiple times to verify repeated failures. */
+    for (limit = 0; limit <= 8192 && !succeeded; ++limit) {
+
+        /* First attempt */
+        alloc_limit = limit;
+        help_str = ls_args_help(&args);
+        alloc_limit = -1;
+        if (help_str == NULL || strcmp(args.last_error, "Success") != 0) {
+            /* Expect allocation-related failure while we are below the needed size */
+            ASSERT_STR_EQ(args.last_error, "Allocation failure");
+            ASSERT(help_str != NULL);
+            ASSERT_STR_EQ(help_str, "Not enough memory available to generate help text.");
+
+            /* Second attempt (repeated failure path) */
+            alloc_limit = limit;
+            help_str = ls_args_help(&args);
+            alloc_limit = -1;
+            ASSERT_STR_EQ(args.last_error, "Allocation failure");
+            ASSERT(help_str != NULL);
+            ASSERT_STR_EQ(help_str, "Not enough memory available to generate help text.");
+        } else {
+            /* Success achieved at this alloc_limit; verify content */
+            succeeded = 1;
+            ASSERT(help_str != NULL);
+            ASSERT_STR_EQ(args.last_error, "Success");
+            ASSERT(strstr(help_str, "Provides help"));
+            ASSERT(strstr(help_str, "Specify the outfile"));
+            ASSERT(strstr(help_str, "Input file"));
+        }
+    }
+
+    /* Ensure we eventually succeeded in generating help text */
+    ASSERT(succeeded);
+
+    ls_args_free(&args);
+    return 0;
+}
+
+TEST_CASE(help_output_empty_description) {
+    int help = 0;
+    ls_args args;
+    char* help_str;
+
+    ls_args_init(&args);
+    ls_args_bool(&args, &help, "h", "help", "", 0);
+
+    help_str = ls_args_help(&args);
+    ASSERT(help_str != NULL);
+    ASSERT_STR_EQ(args.last_error, "Success");
+
+    /* Should show the option, but not crash or print garbage for description */
+    ASSERT(strstr(help_str, "-h"));
+    ASSERT(strstr(help_str, "--help"));
+    /* Should not print any description after the option */
+    /* Accept either a blank line or just the option itself */
+    /* There should not be any non-space character after the option on its line */
+    {
+        const char* opt_line = strstr(help_str, "-h \t--help");
+        ASSERT(opt_line != NULL);
+        /* Find the end of the line */
+        const char* end = strchr(opt_line, '\n');
+        if (end) {
+            /* Check that between the end of the option and the newline, only spaces/tabs appear */
+            const char* after = opt_line + strlen("-h \t--help");
+            while (after < end && (*after == ' ' || *after == '\t')) ++after;
+            ASSERT(after == end);
+        }
+    }
+
+    ls_args_free(&args);
+    return 0;
+}
+
+TEST_CASE(free_null) {
+    /* don't crash */
+    ls_args_free(NULL);
+    return 0;
+}
+
 TEST_CASE(help_alloc_fail) {
     int help = 0;
     ls_args args;
     char* help_str;
     ls_args_init(&args);
     ls_args_bool(&args, &help, "h", "help", "Provides help", 0);
-    fail_alloc = 1;
+    fail_alloc_once = 1;
     help_str = ls_args_help(&args);
-    fail_alloc = 0;
     ASSERT_STR_EQ(args.last_error, "Allocation failure");
     ASSERT_STR_EQ(help_str, "Not enough memory available to generate help text.");
     ls_args_free(&args);
@@ -447,10 +683,10 @@ TEST_CASE(alloc_fail) {
     ls_args_init(&args);
     ASSERT_EQ(args.args_len, 0, "%uz");
     /* deliberately fail the allocation here */
-    fail_alloc = 1;
+    fail_alloc_once = 1;
     /* if the allocation fails, this fails */
     ret = ls_args_bool(&args, &help, "h", "help", "Provides help", 0);
-    fail_alloc = 0;
+
     ASSERT(!ret);
     ASSERT_STR_EQ(args.last_error, "Allocation failure");
     /* there is no documented error state for this; we simply fail to add the
@@ -470,10 +706,10 @@ TEST_CASE(alloc_fail_pos_string) {
     ls_args_init(&args);
     ASSERT_EQ(args.args_len, 0, "%uz");
     /* deliberately fail the allocation here */
-    fail_alloc = 1;
+    fail_alloc_once = 1;
     /* if the allocation fails, this fails */
     ret = ls_args_pos_string(&args, &input, "Input file", 0);
-    fail_alloc = 0;
+
     ASSERT(!ret);
     ASSERT_STR_EQ(args.last_error, "Allocation failure");
     ASSERT_EQ(args.args_len, 0, "%uz");
