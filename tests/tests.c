@@ -197,6 +197,24 @@ TEST_CASE(positional_value_same_as_flag) {
     return 0;
 }
 
+TEST_CASE(two_positional_second_required) {
+    const char* first = NULL;
+    const char* second = NULL;
+    ls_args args;
+    char* argv[] = { "./hello", NULL };
+    int argc = sizeof(argv) / sizeof(*argv) - 1;
+
+    ls_args_init(&args);
+    ls_args_pos_string(&args, &first, "first", 0);
+    ls_args_pos_string(&args, &second, "second", LS_ARGS_REQUIRED);
+
+    ASSERT(!ls_args_parse(&args, argc, argv));
+    ASSERT_STR_EQ(args.last_error, "Required argument 'second' not provided");
+
+    ls_args_free(&args);
+    return 0;
+}
+
 TEST_CASE(basic_args_positional_required) {
     const char* first;
     ls_args args;

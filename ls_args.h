@@ -1,6 +1,7 @@
-/* Lion's Standard (LS) ANSI C commandline argument parser.
+/* Lion's Standard (LS) ANSI C commandline argument parser with included help
+ * renderer.
  *
- * Version: 2.0
+ * Version: 2.1
  * Website: https://libls.org
  * Repo: https://github.com/libls/args
  * SPDX-License-Identifier: MIT
@@ -22,6 +23,8 @@
  * - Stop signals: `--` (everything after this is positional arguments)
  * - Positional arguments: `input.txt output.txt`
  *
+ * Includes a help renderer.
+ *
  * ==== 2. HOW TO USE ====
  *
  * ls_args, like all LS libraries, is a header-only library in a single file.
@@ -30,18 +33,22 @@
  *
  * Then include and use it.
  *
+ * Define LS_ARGS_IMPLEMENTATION in exactly one source file before the include.
+ *
  * Example:
  *
  * #include <ls_args.h>
  * // ...
  *     ls_args args;
  *     int help = 0;
+ *     const char* infile;
  *     const char* outfile = "out.txt";
  *
  *     ls_args_init(&args);
  *     ls_args_bool(&args, &help, "h", "help", "Prints help", 0);
  *     ls_args_string(&args, &outfile, "o", "out",
  *                    "Specify the outfile, default 'out.txt'", 0);
+ *     ls_args_pos_string(&args, &infile, "input file")
  *     if (!ls_args_parse(&args, argc, argv)) {
  *         printf("Error: %s\n%s\n", args.last_error,
  *                ls_args_help(&args));
@@ -193,6 +200,9 @@ int ls_args_string(ls_args*, const char** val, const char* short_opt,
  *
  * The first call to this function declares the argument for n=0, the next for
  * n=1, and so on.
+ *
+ * If the first positional isn't LS_ARGS_REQUIRED, but the second is,
+ * effectively both are required.
  */
 int ls_args_pos_string(
     ls_args*, const char** val, const char* name, ls_args_mode mode);
