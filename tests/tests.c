@@ -113,6 +113,23 @@ TEST_CASE(too_many_positional_after_double_dash) {
     return 0;
 }
 
+TEST_CASE(basic_args_positional_required_error) {
+    int help = 0;
+    const char* first;
+    ls_args args;
+    char* argv[] = { "./hello", "world", NULL };
+    int argc = sizeof(argv) / sizeof(*argv) - 1;
+
+    ls_args_init(&args);
+    ls_args_pos_string(&args, 0, &first, "First positional argument", LS_ARGS_REQUIRED);
+
+    ASSERT(!ls_args_parse(&args, argc, argv));
+
+    ASSERT_STR_EQ(args.last_error, "Required positional argument not found (argument 0)");
+    ls_args_free(&args);
+    return 0;
+}
+
 TEST_CASE(basic_args_positional_only_error) {
     int help = 0;
     const char* input;

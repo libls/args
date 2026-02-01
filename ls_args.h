@@ -576,11 +576,21 @@ int ls_args_parse(ls_args* a, int argc, char** argv) {
 
     for (i = 0; i < (int)a->args_len; ++i) {
         if (a->args[i].mode == LS_ARGS_REQUIRED && !a->args[i].found) {
-            const size_t len = 64 + strlen(a->args[i].match.name.long_opt);
-            a->_allocated_error = LS_REALLOC(a->_allocated_error, len);
-            memset(a->_allocated_error, 0, len);
-            sprintf(a->_allocated_error, "Required argument '--%s' not found",
-                a->args[i].match.name.long_opt);
+            size_t len;
+            if (a->args[i].is_pos) {
+                len = 64;
+                a->_allocated_error = LS_REALLOC(a->_allocated_error, len);
+                memset(a->_allocated_error, 0, len);
+                sprintf(a->_allocated_error, "Required positional argument not found (argument %d)",
+                    a->args[i].match.pos);
+            } else {
+                len = 64 + strlen(a->args[i].match.name.long_opt);
+                a->_allocated_error = LS_REALLOC(a->_allocated_error, len);
+                memset(a->_allocated_error, 0, len);
+                sprintf(a->_allocated_error, "Required argument '--%s' not found",
+                    a->args[i].match.name.long_opt);
+            }
+
             a->last_error = a->_allocated_error;
             return 0;
         }
