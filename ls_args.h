@@ -1,6 +1,6 @@
 /* Lion's Standard (LS) ANSI C commandline argument parser.
  *
- * Version: 1.0
+ * Version: 2.0
  * Website: https://libls.org
  * Repo: https://github.com/libls/args
  * SPDX-License-Identifier: MIT
